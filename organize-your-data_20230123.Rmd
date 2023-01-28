@@ -1,0 +1,322 @@
+---
+title: "Organize your data - summarize, drop_na, and mutate functions"
+author: "Yanett Cepeda"
+output: 
+  html_document: 
+    keep_md: yes
+date: "2023-01-22"
+---
+
+## Exercise 1: Sort values by column
+
+First, load the `palmerpenguins` package and the `tidyverse`.
+
+```{r}
+library(palmerpenguins)
+library(tidyverse)
+```
+
+Next, we'll make sure that the dataset has loaded properly.
+`View()` opens a new tab with the data frame. Neat.
+
+```{r}
+View(penguins)
+```
+
+Now, let's sort by the column `bill_length_mm` in ascending order (default order).
+
+```{r}
+penguins %>% 
+  arrange(bill_length_mm)
+```
+
+Same, but in descending order.
+
+```{r}
+penguins %>% 
+  arrange(-bill_length_mm)
+```
+
+We can use `View()` to open up the results in a new tab.
+
+```{r}
+penguins2 <- penguins %>% 
+  arrange(bill_length_mm)
+View(penguins2)
+```
+
+The data frame has 344 entries and 8 columns.
+
+## Exercise 2: Get the mean of the bill lenghts recorded per island
+
+The course recommends using the `group_by()` and `summarize()` functions in combination for this purpose. Here, I'm using only the parts of the suggested answer that I have used in the past:
+
+```{r}
+penguins %>%
+  group_by(island) %>% 
+  summarize(mean_bill_length_mm = mean(bill_length_mm))
+```
+
+According to the course, the function `drop_na()` drops rows where any column specified contains a missing value. Read the documentation with `?drop_na`.
+
+```{r}
+test_mean <- penguins %>% 
+  group_by(island) %>%
+  drop_na() %>% 
+  summarize(mean_bill_length_mm = mean(bill_length_mm))
+test_mean
+```
+
+See 2.5 regarding the variation of computed means for the island Dream (44.16774 != 44.22195)
+
+### 2.1 drop_na
+Now, the question is: What does drop_na does exactly? Does it drop NAs from the whole data set or only from the column specified after it?
+
+The answer is included in the documentation for this function, accessed through RStudio with `?drop_na`: "If empty, all columns are used", referring to the `...` argument for the function `drop_na(data, ...)`.
+
+The following returns 333 rows, versus 344 rows contained in the original data set.
+
+```{r}
+test_drop <- penguins %>% 
+  drop_na()
+test_drop
+```
+
+### 2.2 Count NAs
+Another way to check for this is to count the total of missing values contained in every column with a function.
+
+Let's try something.
+I'm thinking that the solution might be very similar to grouping and summarizing values.
+
+```
+test_count_NA <- penguins %>% 
+  group_by(species) %>% 
+  summarize_all(count(is.na()))
+
+Error in is.na(): 0 arguments passed to `is.na` which requires 1
+```
+
+Let's go back to what happened above later when my grasp of R is a little better.
+
+For now, I found this very simple way to count NAs using dplyr in [Sebastian Sauer's website] (https://sebastiansauer.github.io/sum-isna/)
+
+```
+penguins %>% 
+  select(everything()) %>% 
+  summarize_all(funs(sum(is.na(.)))) # The dot refers to what was handed over by the pipe, ie, the output of the last step.
+
+```
+
+Let's try to understand each piece.
+
+```{r}
+test_ages <- c(2, 21, 34, 46, 89, NA, NA, 4)
+test_ages
+```
+```{r}
+sum(is.na(test_ages))
+```
+
+Therefore, `sum(is.na())` counts the total of NAs.
+
+```{r}
+penguins %>% 
+  select(everything()) %>% # Select all columns 
+  summarise_all(funs(sum(is.na(.))))
+```
+#### 2.21 Filter NAs per column
+Found damianooldoni's hepful answer on filtering NAs with the tidyverse [here](https://stackoverflow.com/questions/17013227/select-only-rows-if-its-value-in-a-particular-column-is-na-in-r).
+
+```{r}
+test_filter_NAs <- penguins %>%
+  filter(is.na(island))
+test_filter_NAs
+```
+
+There are no NAs in `island`. What about `sex` just to check this works?
+
+```{r}
+test_filter_NAs2 <- penguins %>%
+  filter(is.na(sex))
+test_filter_NAs2
+```
+
+### 2.3 Sum row-wise
+
+How to get the total sum?
+
+Read `vignette("rowwise")`.
+- `rowwise()` doesn't do anything on its own--it changes how other verbs work.
+- Using `mutate()` here will compute the mean across all rows:
+```
+df %>% mutate(m = mean(c(x,y,z)))
+```
+- Using `mutate()` here will compute the mean for each row:
+```
+df %>% rowwise() %>% mutate(m = mean(c(x,y,z)))
+```
+- `rowwise()` is a special form of grouping. You can use `ungroup()` to remove it from a data frame.
+- If you have a lot of variables, don't type in every variable. You can use `c_across()` which allows you to select many variables.
+
+```{r}
+test_rowsum <- penguins %>% 
+  select(everything()) %>% 
+  summarise_all(funs(sum(is.na(.))))
+test_rowsum %>% rowwise() %>% 
+  summarize(total_NAs = sum(c_across(species:year)))
+```
+### 2.4 Count rows with NAs
+
+Now, the total NAs is not the same as the total of rows with NAs. How can I ask R to compute the total number of rows that contain at least 1 NA?
+
+According to what we saw in 2.1, the answer must be 11, given the data frame went down 11 rows after using `drop_na`.
+
+Once again, [Sebastian Sauer's website] (https://sebastiansauer.github.io/sum-isna/) comes to the rescue.
+
+```{r}
+test_count_rows <- penguins %>% 
+  rowwise() %>% 
+  summarize(NA_per_row = sum(is.na(.)))
+test_count_rows
+```
+
+This is not what I expected... Even though I used `rowwise()`, the above returns the total number of NAs the data frame `penguins` contains...
+
+I might need to leave this for now, and try something else I found in the `vignette("rowwise")`:
+
+```
+test_count_rows_2 <- penguins %>% 
+  rowwise() %>% 
+  mutate(total_NAs = sum(c_across(where(is.na(.)))))
+
+# Error in `mutate()`
+# Caused by error in `where()`: Can't convert `fn`, a logical matrix, to a function.
+```
+Let's see if a simple sum works:
+
+```
+test_count_rows_2 <- penguins %>% 
+  rowwise() %>% 
+  mutate(total_numerics = sum(c_across(where(is.numeric(.)))))
+
+# Error in `mutate()`
+# Caused by error in `where()`: Can't convert `fn`, `FALSE`, to a function.
+```
+
+I wonder whether assigning the variable has any part in this...
+
+```{r}
+test_count_rows_3 <- penguins %>% rowwise()
+```
+
+```
+test_count_rows_3 %>% 
+  mutate(total_numerics = sum(c_across(where(is.numeric(.)))))
+
+# Error in `mutate()`
+# Caused by error in `where()`: Can't convert `fn`, `FALSE`, to a function.
+```
+
+Given the same error, where we assign the variable seems to not be the culprit.
+
+Could there be a problem with each of the columns' data types?
+
+```{r}
+glimpse(penguins)
+```
+There seems to be no problem with that-- the documentation in `?is.numeric` states that it is equivalent to `dbl`, and we have at least two columns that fall into that category (`bill_length_mm` and `bill_depth_mm`).
+
+There's another example in `vignette("rowwise")`. Let's try adding the numeric values first.
+
+But first, note the difference in the use of `across()` below, and `c_across()` above. As per `vignette("rowwise")`:
+
+> NB: I use...``across()` (not `c_across()`) here because...`rowSums()` take a multi-row data frame as input.
+
+```{r}
+test_row_sum_4 <- penguins %>% 
+  mutate(total_numerics = rowSums(across(where(is.numeric))))
+test_row_sum_4
+```
+
+Phew! Now, the same with `is.na`. Wait a second... It's not quite the same. If a value is NA, what is the numeric equivalent? What would the sum be adding? 
+
+Answer: `is.na` is either `TRUE` = 1 or `FALSE` = 0, so they can absolutely be added:
+
+```{r}
+test_row_sum_5 <- penguins %>% 
+  mutate(total_NAs = rowSums(is.na(.))) %>% 
+  filter(total_NAs > 0)
+test_row_sum_5
+```
+
+Finally! The total is 11 rows.
+
+After going through all of this, I'm finding it very useful to follow the `rowwise` and `colwise` vignettes documentation. I think each warrants an exercise on their own. So, let's leave it at that, and come back later to learn from them. (Insert link to those exercises here whenever they are created.)
+
+### 2.5 How the means are computed after `drop_na` is used
+
+To summarize, `drop_na`, with empty arguments, uses all columns and drops every row where it finds NAs. Perhaps the variation in computed means in exercise 2 comes from that?
+
+Because I'm faster in Excel, let's try to analize the data set there.
+
+I'm using the `writexl` library and its `write_xlsx` function to export the data set to my repo.
+
+```
+install.packages("writexl")
+library("writexl")
+write_xlsx(penguins, "penguins.xlsx") # My working directory is already set, so I believe there's no need to specify the whole path for this reason.
+```
+
+The island Dream does not contain NAs in the bill_length_mm observations. Therefore, the `mean` function can compute without droping NAs.
+
+The mean of every observation in the island Dream = 44.16774, exactly as computed with this:
+
+```{R}
+penguins %>%
+  group_by(island) %>% 
+  summarize(mean_bill_length_mm = mean(bill_length_mm))
+```
+
+Now, there is one NA in the subset of penguins observed in the island Dream, the sex of the penguin was not determined in one row. When we drop NAs, this row will also be dropped, and the `mean` will change with it:
+
+```{r}
+test_mean <- penguins %>% 
+  group_by(island) %>%
+  drop_na() %>% 
+  summarize(mean_bill_length_mm = mean(bill_length_mm))
+test_mean
+```
+
+## Exercise 3: Get the maximum bill_length_mm recorded per island
+
+```{r}
+penguins %>%
+  group_by(island) %>% 
+  drop_na() %>% 
+  summarize(max_bill_length_mm = max(bill_length_mm))
+```
+
+## Exercise 4: Get the mean and max bill length recorded per island per species
+
+```{r}
+penguins %>% 
+  group_by(island, species) %>% 
+  drop_na() %>% 
+  summarize(mean_bill_lenght = mean(bill_length_mm), max_bill_length = max(bill_length_mm))
+```
+## Exercise 5: Filter Adelie penguins observations
+
+```{r}
+penguins %>% 
+  filter(species == "Adelie")
+```
+
+I wouldn't necessarily say that we ended strong with the most difficult exercise of the lot, pero es lo que hay.
+
+## Extra exercises - to keep practicing
+
+### Read the vignettes `rowwise` and `colwise` and learn from the exercises.
+
+### Create bins and summarize any column
+https://www.marsja.se/r-count-the-number-of-occurrences-in-a-column-using-dplyr/
+
